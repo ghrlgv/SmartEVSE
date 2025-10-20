@@ -210,6 +210,9 @@ struct ContentView: View {
                         Text("This will reboot the SmartEVSE controller. Charging may be interrupted.")
                     }
                 }
+                .task {
+                    await refreshNow()
+                }
             }
         }
     }
@@ -243,9 +246,15 @@ struct ContentView: View {
         if newValue {
             // turning on uses the selected mode
             await service.setMode(ip: ipAddress, mode: selectedMode)
+            // Small delay to allow the device to apply the new mode before we fetch
+            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
+            print("[DEBUG] Requested ON with mode=\(selectedMode.rawValue) \(selectedMode.displayName)")
         } else {
             // turning off
             await service.setMode(ip: ipAddress, mode: .off)
+            // Small delay to allow the device to apply the new mode before we fetch
+            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
+            print("[DEBUG] Requested OFF")
         }
         await refreshNow()
     }

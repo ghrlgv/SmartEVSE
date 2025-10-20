@@ -14,9 +14,9 @@
             filePath = "SmartEVSE/SmartEVSEService.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "73"
-            endingLineNumber = "73"
-            landmarkName = "setCableLock(ip:locked:)"
+            startingLineNumber = "86"
+            endingLineNumber = "86"
+            landmarkName = "setMode(ip:mode:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

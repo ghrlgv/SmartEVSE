@@ -28,16 +28,29 @@ enum EVSEMode: Int, CaseIterable, Identifiable, Codable {
     }
 }
 
-struct EVSESettingsResponse: Decodable {
+struct EVSEAPIResponseColors: Decodable {
+    let off: String?
+    let normal: String?
+    let solar: String?
+    let smart: String?
+    let custom: String?
+}
+
+struct EVSEAPIResponseEVMeter: Decodable {
+    let charged_kwh: Double?
+}
+
+struct EVSEAPIResponseSettings: Decodable {
+    let override_current: Int?
+    let cablelock: Int?
+}
+
+struct EVSEAPIResponse: Decodable {
     let mode: String?
     let mode_id: Int?
-    let override_current: Int?
-    let color_off: String?
-    let color_normal: String?
-    let color_solar: String?
-    let color_smart: String?
-    let cablelock: Int?
-    let charged_kwh: Double?
+    let color: EVSEAPIResponseColors?
+    let settings: EVSEAPIResponseSettings?
+    let ev_meter: EVSEAPIResponseEVMeter?
 }
 
 struct HistoryItem: Identifiable, Codable {
@@ -124,9 +137,10 @@ struct HistoryItem: Identifiable, Codable {
         do {
             let (data, response) = try await URLSession.shared.data(for: req)
             if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
-                if let decoded = try? JSONDecoder().decode(EVSESettingsResponse.self, from: data) {
+                if let decoded = try? JSONDecoder().decode(EVSEAPIResponse.self, from: data) {
+                    print("[DEBUG][POST] mode_id=\(decoded.mode_id ?? -1), mode=\(decoded.mode ?? "nil")")
                     handleSettings(decoded)
-                    updateMessage("Mode: \(decoded.mode ?? "unknown") | Current: \(decoded.override_current ?? 0)A")
+                    updateMessage("Mode: \(decoded.mode ?? "unknown") | Current: \(decoded.settings?.override_current ?? 0)A")
                 } else {
                     updateMessage("Settings updated.")
                 }
@@ -138,11 +152,12 @@ struct HistoryItem: Identifiable, Codable {
         }
     }
 
-    func getSettings(ip: String) async -> EVSESettingsResponse? {
+    func getSettings(ip: String) async -> EVSEAPIResponse? {
         guard let url = URL(string: "http://\(ip)/settings") else { return nil }
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
-            if let decoded = try? JSONDecoder().decode(EVSESettingsResponse.self, from: data) {
+            if let decoded = try? JSONDecoder().decode(EVSEAPIResponse.self, from: data) {
+                print("[DEBUG][GET] mode_id=\(decoded.mode_id ?? -1), mode=\(decoded.mode ?? "nil")")
                 handleSettings(decoded)
                 return decoded
             }
@@ -150,16 +165,19 @@ struct HistoryItem: Identifiable, Codable {
         return nil
     }
 
-    private func handleSettings(_ decoded: EVSESettingsResponse) {
+    private func handleSettings(_ decoded: EVSEAPIResponse) {
         // Determine mode and color
         let mode = EVSEMode(rawValue: decoded.mode_id ?? 0) ?? .off
-        let hex: String
-        switch mode {
-        case .normal: hex = decoded.color_normal ?? "#00FF00"
-        case .solar:  hex = decoded.color_solar  ?? "#FFFF00"
-        case .smart:  hex = decoded.color_smart  ?? "#0000FF"
-        default:      hex = decoded.color_off    ?? "#555555"
-        }
+        let colors = decoded.color
+        let hex: String = {
+            guard let colors else { return "#555555" }
+            switch mode {
+            case .normal: return colors.normal ?? "#00FF00"
+            case .solar:  return colors.solar  ?? "#FFFF00"
+            case .smart:  return colors.smart  ?? "#0000FF"
+            case .off, .pause: return colors.off ?? "#555555"
+            }
+        }()
 
         // Update UI color
         self.statusColor = Color(hex: hex)
@@ -167,12 +185,12 @@ struct HistoryItem: Identifiable, Codable {
         // History + notifications when the mode actually changes
         if mode != currentMode {
             currentMode = mode
-            let energy = (mode == .off) ? decoded.charged_kwh : nil
+            let energy = (mode == .off) ? decoded.ev_meter?.charged_kwh : nil
             pushHistory(mode: mode, hex: hex, chargedKWh: energy)
             NotificationManager.shared.notify(title: "SmartEVSE mode changed", body: mode.displayName)
         }
 
-        if let lock = decoded.cablelock { self.isCableLocked = (lock != 0) }
+        if let lock = decoded.settings?.cablelock { self.isCableLocked = (lock != 0) }
     }
 
     private func pushHistory(mode: EVSEMode, hex: String, chargedKWh: Double? = nil) {
@@ -212,3 +230,4 @@ extension Color {
         self.init(red: r, green: g, blue: b)
     }
 }
+
